@@ -36,7 +36,7 @@ int hostname_auth(struct server_conn *serv){
 //======================================
 // I/O helpers
 //======================================
-int get_totallength(char* buf){
+int get_contentlength(char* buf){
     char* temp;
     char* content = strstr(buf, "Content-Length");
     temp = strchr(content, ':')+2;
@@ -47,13 +47,30 @@ int get_totallength(char* buf){
     return -1;
 }
 
+int get_headerlength(char* buf){ //almost there
+    char* temp;
+    char temp2[2000];
+    char* buf_2 = (char* )malloc(strlen(buf)+1);
+    memcpy(buf_2, buf, strlen(buf)+1);
+    //printf("Buf: %ld -- temp: %ld\n", strlen(buf), strlen(buf_2));
+    intptr_t ptr_t;
+    intptr_t ptr_b;
+    temp = strstr(buf_2, "\r\n\r\n");
+    ptr_t = (intptr_t)temp;
+    ptr_b = (intptr_t)buf_2;
+    //printf("PTR: %ld  -  %p\nBUF: %ld\nSize: %ld  -  \n", ptr_t, temp, ptr_b, ptr_t-ptr_b);
+    memcpy(temp2, buf, ptr_t-ptr_b+2);
+    temp2[ptr_t-ptr_b+2] = '\0';
+    //printf("Header hopefully: %s\n", temp2);
+    return strlen(temp2);
+}
 
 int read_in(char* buf, int servfd){ //packets get here in bursts of 1514, need to somehow wait for the entire packet, need length of header - content-length to loop this enough
     int n;
     int new = 1;
     int d_left = MAXBUF;
     char* bufp = buf;
-    int content_length;
+    int content_length, header_length;
     //while contentlength > total length
     while(d_left > 0){
         if((n = read(servfd, buf, d_left)) < 0){
@@ -64,19 +81,13 @@ int read_in(char* buf, int servfd){ //packets get here in bursts of 1514, need t
         d_left -= n;
         bufp += n;
         if(new){
-            content_length = get_totallength(buf);
+            content_length = get_contentlength(buf);
+            header_length = get_headerlength(buf);
             new = 0;
         }
     }
     return (n - d_left);
 }
-
-
-// int write_out(char* buf, int clientfd){
-
-// }
-
-
 
 
 //======================================

@@ -131,21 +131,6 @@ int parse(int clientfd, struct server_conn *serv){
 
 
 
-
-
-
-
-int get_headerlength(char* buf){  //BROKEN AS FUCK
-    char* temp;
-    char* content = strtok(buf, "\r\n\r\n");
-    
-    if (temp != NULL){
-        return atoi(temp);
-    }
-    return -1;
-}
-
-
 void proxy_service(struct server_conn *serv, int clientfd){
     int n, total_len, header_len;
     int new=1;
