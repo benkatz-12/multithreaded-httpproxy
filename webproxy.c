@@ -59,7 +59,7 @@ int parse(int clientfd, struct server_conn *serv){
         }
         
         if(!check_if_get(buf)){
-            e=-1;return e;
+            e=-2;return e;
         }
 
         //printf("Server received the following request: %d bytes -  from %d : \n%s\n",n,clientfd, buf);
@@ -138,7 +138,6 @@ int parse(int clientfd, struct server_conn *serv){
 int get_headerlength(char* buf){  //BROKEN AS FUCK
     char* temp;
     char* content = strtok(buf, "\r\n\r\n");
-    printf("header len: %d\n", sizeof(content));
     
     if (temp != NULL){
         return atoi(temp);
@@ -197,8 +196,8 @@ void proxy_service(struct server_conn *serv, int clientfd){
     //     cur_len += n;
     // }
 
-    ///////First possible way
-    //n = read_in(buf, serv->servfd);
+    /////First possible way
+    n = read_in(buf, serv->servfd);
 
     ///////Second possible way
     // while(1){
@@ -208,8 +207,7 @@ void proxy_service(struct server_conn *serv, int clientfd){
     //     write(clientfd, buf, strlen(buf));
     // }
     
-
-    n = read(serv->servfd, buf, MAXBUF);
+    //n = read(serv->servfd, buf, MAXBUF);
     write(clientfd, buf, strlen(buf));
     //printf("Server got response %d\n%s\n",n, buf);
     
@@ -229,17 +227,17 @@ void * thread(void* vargp){
     
     //parse http request
     if((n=parse(clientfd, &serv)) < 0){ 
-        serror(clientfd, 0);
+        serror(clientfd, n);
     }
 
     //authenticate request
     if((n=hostname_auth(&serv)) < 0){
-        serror(clientfd, 1);
+        serror(clientfd, -2);
     }
 
     //open connection to requested http server
     if((serv.servfd=open_servfd(&serv)) < 0){
-        serror(clientfd, 2);
+        serror(clientfd, -3);
     }
 
     proxy_service(&serv, clientfd);

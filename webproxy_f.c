@@ -48,7 +48,7 @@ int get_totallength(char* buf){
 }
 
 
-int read_in(char* buf, int servfd){
+int read_in(char* buf, int servfd){ //packets get here in bursts of 1514, need to somehow wait for the entire packet, need length of header - content-length to loop this enough
     int n;
     int new = 1;
     int d_left = MAXBUF;
@@ -108,11 +108,11 @@ int check_if_get(char* buf){
  */
 void serror(int clientfd, int type){
     char buf[38];
-    if(type == 0){
+    if(type == -1){
         strcpy(buf, "HTTP/1.1 404 Not Found\r\n\r\n");
-    }else if(type == 1){
+    }else if(type == -2){
         strcpy(buf, "HTTP/1.1 400 Bad Request\r\n\r\n");
-    }else if(type == 2){
+    }else if(type == -3){
         strcpy(buf, "HTTP/1.1 500 Internal Proxy Error\r\n\r\n");
     }
     
