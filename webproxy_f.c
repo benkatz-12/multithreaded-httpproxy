@@ -1,6 +1,17 @@
 #include "webproxy.h"
 
 
+/*
+ * edit_conn - change connection type from keep-alive to colose
+ */
+void edit_conn(char* body){
+    char* temp;
+    if((temp = strstr(body, "keep-alive")) == NULL){
+        return;
+    }
+    memcpy(temp, "close", 5);
+    memcpy(temp+5, temp+10, strlen(temp)-5);
+}
 
 
 

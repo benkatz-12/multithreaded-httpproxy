@@ -118,6 +118,7 @@ int parse(int clientfd, struct server_conn *serv){
 
         if(body){
             if(strlen(body) < 65535){
+                edit_conn(body);
                 strncpy(serv->body, body, strlen(body));
             }else{e=-1;return e;}
         }
@@ -162,7 +163,6 @@ void proxy_service(struct server_conn *serv, int clientfd){
         //strcat(buf, "Connection: close\r\n");
         strcat(buf, "\r\n");
     }else{
-        //replace Connection: keep-open -- with Connection: close //////////////////////////////////////////////
         strcat(buf, serv->body);
     }
     
@@ -211,7 +211,7 @@ void proxy_service(struct server_conn *serv, int clientfd){
 
     n = read(serv->servfd, buf, MAXBUF);
     write(clientfd, buf, strlen(buf));
-    printf("Server got response %d\n%s\n",n, buf);
+    //printf("Server got response %d\n%s\n",n, buf);
     
     //printf("n = %d\n", n);
    

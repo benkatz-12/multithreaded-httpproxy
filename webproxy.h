@@ -9,7 +9,7 @@
 #include <unistd.h> /* close */
 #include <pthread.h>
 
-#define LISTENQ 15 /* Maximim number of client connections */
+#define LISTENQ 10 /* Maximim number of client connections */
 #define MAXBUF 65535 /* Maximum buffer size */
 extern int h_errno;
 struct server_conn{
@@ -29,3 +29,4 @@ int open_servfd(struct server_conn *serv);
 int check_if_get(char* buf);
 int hostname_auth(struct server_conn *serv);
 int read_in(char* buf, int servfd);
+void edit_conn(char* body);
