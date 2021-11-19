@@ -153,36 +153,9 @@ void proxy_service(struct server_conn *serv, int clientfd){
     //printf("Buf: %s\n", buf);
     write(serv->servfd, buf, strlen(buf));
     bzero(buf, MAXBUF);
-    // while(((n = read(serv->servfd, buf, MAXBUF)) != 0)){
-    //     if(new){
-    //         total_len = get_totallength(buf);
-    //         //header_len = get_headerlength(buf);
-    //         new = 0;
-    //     }
-    //     cur_len += n;
-    //     printf("buflen:  %d   :   %d   :   %d/%d\n", n, clientfd, cur_len, total_len);
-    //     write(clientfd, buf, strlen(buf));                                   // NEEEEED TO BREAK INTO SEPERATE PACKETS IF TOO BIG FOR BUFFER, OTHERWISE FILL BUFFER AND SEND
-        
-    //     bzero(buf, MAXBUF);
-    //     if((cur_len > total_len)){
-    //         break;
-    //     }
-    // }
-    // printf("END    :%d\n", clientfd);
-    // bzero(buf, MAXBUF);
-
-    // total_len = MAXBUF;
-    // while(cur_len < total_len){
-    //     if((n = read(serv->servfd, buf, MAXBUF)) < 0){
-    //         printf("Read error\n");
-    //     }else if(n == 0){
-    //         break;
-    //     }
-    //     cur_len += n;
-    // }
 
     /////First possible way
-    n = read_in(buf, serv->servfd);
+    n = read_in(buf, serv->servfd, clientfd);
 
     ///////Second possible way
     // while(1){
@@ -192,8 +165,15 @@ void proxy_service(struct server_conn *serv, int clientfd){
     //     write(clientfd, buf, strlen(buf));
     // }
     
+    ///////Third possible way
     //n = read(serv->servfd, buf, MAXBUF);
+    //write(clientfd, buf, strlen(buf));
+
+
+    /////for control
     write(clientfd, buf, strlen(buf));
+
+
     //printf("Server got response %d\n%s\n",n, buf);
     
     //printf("n = %d\n", n);

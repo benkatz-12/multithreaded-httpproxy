@@ -28,5 +28,5 @@ void serror(int clientfd, int type); //error handler 0=bad request 1=not found
 int open_servfd(struct server_conn *serv);
 int check_if_get(char* buf);
 int hostname_auth(struct server_conn *serv);
-int read_in(char* buf, int servfd);
+int read_in(char* buf, int servfd, int clientfd);
 void edit_conn(char* body);
