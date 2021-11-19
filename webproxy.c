@@ -124,7 +124,7 @@ int parse(int clientfd, struct server_conn *serv){
         }
         break; //FIND SOME OTHER CONDITION TO BREAK ON
     }
-    printf("Clientfd EXIT: %d  -  %s\n", clientfd, serv->host);
+    printf("Clientfd EXIT: %d  -  %s\n", clientfd, serv->path);
     free(cmp_method);
     return e;
 }
@@ -166,12 +166,12 @@ void proxy_service(struct server_conn *serv, int clientfd){
     // }
     
     ///////Third possible way
-    //n = read(serv->servfd, buf, MAXBUF);
-    //write(clientfd, buf, strlen(buf));
+    // n = read(serv->servfd, buf, MAXBUF);
+    // write(clientfd, buf, strlen(buf));
 
 
     /////for control
-    write(clientfd, buf, strlen(buf));
+    //write(clientfd, buf, strlen(buf));
 
 
     //printf("Server got response %d\n%s\n",n, buf);

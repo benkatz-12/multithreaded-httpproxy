@@ -47,12 +47,11 @@ int get_contentlength(char* buf){
     return -1;
 }
 
-int get_headerlength(char* buf){ //almost there
+int get_headerlength(char* buf_2){ //almost there
     char* temp;
     char temp2[MAXBUF];
-    char* buf_2 = (char* )malloc(strlen(buf)+1);
-    memcpy(buf_2, buf, strlen(buf)+1);
-    printf("Buf: %ld -- temp: %ld\n", strlen(buf), strlen(buf_2));
+    
+    //printf("Buf: %ld -- temp: %ld\n", strlen(buf_2), strlen(buf_2));
     intptr_t ptr_t;
     intptr_t ptr_b;
     if((temp = strstr(buf_2, "\r\n\r\n")) == NULL){
@@ -60,12 +59,12 @@ int get_headerlength(char* buf){ //almost there
     }
     ptr_t = (intptr_t)temp;
     ptr_b = (intptr_t)buf_2;
-    printf("PTR: %ld  -  %p\nBUF: %ld\nSize: %ld  -  \n", ptr_t, temp, ptr_b, ptr_t-ptr_b);
-    memcpy(temp2, buf, ptr_t-ptr_b+2);
-    printf("Header hopefully: %s\n", temp2);
+    //printf("PTR: %ld  -  %p\nBUF: %ld\nSize: %ld  -  \n", ptr_t, temp, ptr_b, ptr_t-ptr_b);
+    memcpy(temp2, buf_2, ptr_t-ptr_b+2);
+    //printf("Header hopefully: %s\n", temp2);
     temp2[ptr_t-ptr_b+2] = '\0';
     
-    free(buf_2);
+    //free(buf_2);
     return strlen(temp2);
 }
 
@@ -100,14 +99,20 @@ int read_in(char* buf, int servfd, int clientfd){ //packets get here in bursts o
             return -1;
         }
         if(new){
-            header_length = get_headerlength(buf);
-            content_length = get_contentlength(buf);
-            total_length = header_length + content_length;
+            char* buf_2 = (char* )malloc(strlen(buf)+1);
+            memcpy(buf_2, buf, strlen(buf)+1);
+            header_length = get_headerlength(buf_2);
+            //printf("Header length: %d\n", header_length);
+            content_length = get_contentlength(buf_2);
+            //printf("OAWEFIAF\n");
+            total_length = header_length + content_length+2;
             new = 0;
+            free(buf_2);
         }
-        write(clientfd, buf, strlen(buf));
         cur_len += n;
-        printf("Curlen: %d  /  %d", cur_len, total_length);
+        printf("Curlen (%d): %d  /  %d    :   %d\n", clientfd, cur_len, total_length, n);
+        write(clientfd, buf, n);
+        
         bzero(buf, MAXBUF);
     }
     printf("not here\n");
