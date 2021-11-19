@@ -153,10 +153,10 @@ void proxy_service(struct server_conn *serv, int clientfd){
     //printf("Buf: %s\n", buf);
     write(serv->servfd, buf, strlen(buf));
     bzero(buf, MAXBUF);
-
+    printf("Before readin\n");
     /////First possible way
     n = read_in(buf, serv->servfd, clientfd);
-
+    printf("Aftr readin\n");
     ///////Second possible way
     // while(1){
     //     if((n = read(serv->servfd, buf, MAXBUF)) == 0){
@@ -194,19 +194,19 @@ void * thread(void* vargp){
     if((n=parse(clientfd, &serv)) < 0){ 
         serror(clientfd, n);
     }
-
+    printf("out parse\n");
     //authenticate request
     if((n=hostname_auth(&serv)) < 0){
         serror(clientfd, -2);
     }
-
+    printf("out hostname\n");
     //open connection to requested http server
     if((serv.servfd=open_servfd(&serv)) < 0){
         serror(clientfd, -3);
     }
-
+    printf("out serv\n");
     proxy_service(&serv, clientfd);
-
+    printf("out proxy\n");
     close(clientfd);
     fflush(stdout);
     pthread_exit(NULL);

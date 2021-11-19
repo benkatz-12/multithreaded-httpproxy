@@ -39,6 +39,11 @@ int hostname_auth(struct server_conn *serv){
 int get_contentlength(char* buf){
     char* temp;
     char* content = strstr(buf, "Content-Length");
+
+    if(content == NULL){
+        content = strstr(buf, "content-length");
+    }
+
     temp = strchr(content, ':')+2;
     
     if (temp != NULL){
@@ -101,16 +106,22 @@ int read_in(char* buf, int servfd, int clientfd){ //packets get here in bursts o
         if(new){
             char* buf_2 = (char* )malloc(strlen(buf)+1);
             memcpy(buf_2, buf, strlen(buf)+1);
+            printf("Before header\n");
             header_length = get_headerlength(buf_2);
+            printf("Before coneet\n");
             //printf("Header length: %d\n", header_length);
             content_length = get_contentlength(buf_2);
+            printf("AFter content\n");
             //printf("OAWEFIAF\n");
             total_length = header_length + content_length+2;
             new = 0;
+            printf("Before free\n");
             free(buf_2);
+            printf("After free\n");
         }
+        printf("out new\n");
         cur_len += n;
-        printf("Curlen (%d): %d  /  %d    :   %d\n", clientfd, cur_len, total_length, n);
+        //printf("Curlen (%d): %d  /  %d    :   %d\n", clientfd, cur_len, total_length, n);
         write(clientfd, buf, n);
         
         bzero(buf, MAXBUF);
