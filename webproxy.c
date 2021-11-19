@@ -162,6 +162,7 @@ void proxy_service(struct server_conn *serv, int clientfd){
         //strcat(buf, "Connection: close\r\n");
         strcat(buf, "\r\n");
     }else{
+        //replace Connection: keep-open -- with Connection: close //////////////////////////////////////////////
         strcat(buf, serv->body);
     }
     
