@@ -56,7 +56,6 @@ int get_headerlength(char* buf_2){ //almost there
     char* temp;
     char temp2[MAXBUF];
     
-    //printf("Buf: %ld -- temp: %ld\n", strlen(buf_2), strlen(buf_2));
     intptr_t ptr_t;
     intptr_t ptr_b;
     if((temp = strstr(buf_2, "\r\n\r\n")) == NULL){
@@ -64,41 +63,20 @@ int get_headerlength(char* buf_2){ //almost there
     }
     ptr_t = (intptr_t)temp;
     ptr_b = (intptr_t)buf_2;
-    //printf("PTR: %ld  -  %p\nBUF: %ld\nSize: %ld  -  \n", ptr_t, temp, ptr_b, ptr_t-ptr_b);
     memcpy(temp2, buf_2, ptr_t-ptr_b+2);
-    //printf("Header hopefully: %s\n", temp2);
     temp2[ptr_t-ptr_b+2] = '\0';
-    
-    //free(buf_2);
+
     return strlen(temp2);
 }
 
-int read_in(char* buf, int servfd, int clientfd){ //packets get here in bursts of 1514, need to somehow wait for the entire packet, need length of header - content-length to loop this enough
+int read_in(char* buf, int servfd, int clientfd){
     int n;
     int new = 1;
     int d_left = MAXBUF;
     char* bufp = buf;
     int cur_len = 0;
     int content_length, header_length, total_length;
-    // ////////////this works somewhat, but not really
-    // while(d_left > 0){
-    //     if((n = read(servfd, buf, d_left)) < 0){
-    //         return -1;
-    //     }else if(n == 0){
-    //         break;
-    //     }
-    //     d_left -= n;
-    //     bufp += n;
-    //     if(new){
-    //         header_length = get_headerlength(buf);
-    //         content_length = get_contentlength(buf);
-    //         total_length = header_length + content_length;
-    //         new = 0;
-    //     }
-        
-    // }
 
-    /////////////try to get this way working
     while(cur_len < total_length){
         if((n = read(servfd, buf, d_left)) < 0){
             return -1;
@@ -106,27 +84,18 @@ int read_in(char* buf, int servfd, int clientfd){ //packets get here in bursts o
         if(new){
             char* buf_2 = (char* )malloc(strlen(buf)+1);
             memcpy(buf_2, buf, strlen(buf)+1);
-            printf("Before header\n");
             header_length = get_headerlength(buf_2);
-            printf("Before coneet\n");
-            //printf("Header length: %d\n", header_length);
             content_length = get_contentlength(buf_2);
-            printf("AFter content\n");
-            //printf("OAWEFIAF\n");
             total_length = header_length + content_length+2;
             new = 0;
-            printf("Before free\n");
             free(buf_2);
-            printf("After free\n");
         }
-        printf("out new\n");
+
         cur_len += n;
-        //printf("Curlen (%d): %d  /  %d    :   %d\n", clientfd, cur_len, total_length, n);
         write(clientfd, buf, n);
         
         bzero(buf, MAXBUF);
     }
-    printf("not here\n");
 
     return (n - d_left);
 }
