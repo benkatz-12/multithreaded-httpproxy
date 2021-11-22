@@ -62,7 +62,38 @@ void pexit(int clientfd){
 }
 
 
+unsigned int compute_hash(char* url){
+    //unsigned int hash;
+    char buf[1000];
+    //sprintf(buf, "%d", url);
+    //hash = atoi(buf);
+    unsigned long hash = 5381;
+    int c;
+    while ((c = *url++))
+        hash = ((hash << 5) + hash) + c;   //djb2 by Dan Bernstein
+    return hash;
+}
 
+FILE* open_file(char* url){
+    FILE* fp;
+ 
+    char buf[1000];
+    char buf2[1000];
+    //char* buf2[1000];
+    char* url_2 = malloc(strlen(url)+3);
+    memcpy(url_2, url, strlen(url));
+
+    strcat(buf, "./cache/");
+    unsigned long hashed_url = compute_hash(url_2);
+    sprintf(buf2, "%lu", hashed_url);
+
+    strcat(buf, buf2);
+
+    if((fp = fopen(buf, "wb")) == NULL){
+        perror("fopen");
+    }
+    return fp;
+}
 
 
 
@@ -126,7 +157,6 @@ int read_in(char* buf, int servfd, int clientfd){
 
         cur_len += n;
         write(clientfd, buf, n);
-        
         bzero(buf, MAXBUF);
     }
 
