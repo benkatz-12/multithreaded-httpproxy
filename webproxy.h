@@ -15,6 +15,7 @@ extern int h_errno;
 struct server_conn{
     struct hostent *server;
     int servfd;
+    char url[1000];
     char path[1000];
     char host[1000];
     char port[10];
@@ -30,3 +31,5 @@ int check_if_get(char* buf);
 int hostname_auth(struct server_conn *serv);
 int read_in(char* buf, int servfd, int clientfd);
 void edit_conn(char* body);
+int check_cache(struct server_conn *serv);
+void pexit(int clientfd);

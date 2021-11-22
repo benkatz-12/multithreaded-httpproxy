@@ -90,6 +90,11 @@ int parse(int clientfd, struct server_conn *serv){
         
 
         //populate serv struct
+        if(strlen(path_2) < 1000){
+            strncpy(serv->url, path_2, strlen(path_2));
+        }else{e=-1;return e;}
+
+
         if(strlen(req_path) < 1000){
             strncpy(serv->path, req_path, strlen(req_path));
         }else{e=-1;return e;}
@@ -154,7 +159,7 @@ void proxy_service(struct server_conn *serv, int clientfd){
 
 /* Thread routine */
 void * thread(void* vargp){
-    int n;
+    int n, c_stat;
     struct server_conn serv;
     int clientfd = *((int*)vargp);
     
@@ -171,6 +176,10 @@ void * thread(void* vargp){
         serror(clientfd, -2);
     }
 
+    //check if file in cache
+    c_stat = check_cache(&serv);
+
+
     //open connection to requested http server
     if((serv.servfd=open_servfd(&serv)) < 0){
         serror(clientfd, -3);
@@ -178,7 +187,9 @@ void * thread(void* vargp){
     
     proxy_service(&serv, clientfd);
 
-    close(clientfd);
-    fflush(stdout);
-    pthread_exit(NULL);
+    pexit(clientfd);
+    exit(0);
+    // close(clientfd);
+    // fflush(stdout);
+    // pthread_exit(NULL);
 }

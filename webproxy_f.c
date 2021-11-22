@@ -33,6 +33,39 @@ int hostname_auth(struct server_conn *serv){
 }
 
 
+int write_to_file(char* buf, char* url){
+    FILE* fp;
+    int len = strlen(buf);
+
+    if((fp = fopen(url, "w")) == NULL){
+        perror("fopen");
+        return 0;
+    }
+    fprintf(fp, "%s", buf);
+
+    fclose(fp);
+    return 1;
+}
+
+int check_cache(struct server_conn *serv){
+    if(access(serv->url, F_OK) == 0){
+        //cache_hit(serv->url);
+        return 1;
+    }
+    return 0; // cache miss
+}
+
+void pexit(int clientfd){
+    close(clientfd);
+    fflush(stdout);
+    pthread_exit(NULL);
+}
+
+
+
+
+
+
 //======================================
 // I/O helpers
 //======================================
