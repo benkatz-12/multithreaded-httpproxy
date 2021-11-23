@@ -7,3 +7,7 @@ DEPS = webproxy.h
 
 webproxymake: webproxy.o webproxy_f.o
 	$(CC) -pthread -o webproxy webproxy.o webproxy_f.o
+
+clean:
+	rm ./cache/*
+	rm webproxy webproxy_f.o webproxy.o

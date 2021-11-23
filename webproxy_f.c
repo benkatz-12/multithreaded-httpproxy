@@ -62,41 +62,43 @@ void pexit(int clientfd){
 }
 
 
-char* compute_hash(char* url){
+void compute_hash(char* url, char* hash){
     FILE* fp;
     char path[50];
     const char* a;
     char cmd[19 + strlen(url)];
     sprintf(cmd, "echo -n '%s' | md5sum", url);
-
+    //printf("CMD: %s\n", cmd);
     fp = popen(cmd, "r");
     while (fgets(path, 50, fp) != NULL) {
         ;
     }
     path[32] = '\0';
-
-    return path;
+    strncpy(hash, path, 33);
 }
 
 FILE* open_file(char* url){
     FILE* fp;
- 
+    char hash[35];
     char buf[1000];
     char buf2[1000];
-    //char* buf2[1000];
+
     char* url_2 = malloc(strlen(url)+3);
-    memcpy(url_2, url, strlen(url));
+    memcpy(url_2, url, strlen(url)+1);
 
     strcat(buf, "./cache/");
-    char* hashed_url = compute_hash(url_2);
+    compute_hash(url_2, hash);
     
-    sprintf(buf2, "%s", hashed_url);
+    sprintf(buf2, "%s", hash);
 
     strcat(buf, buf2);
-    printf("%s\n", buf);
+    //printf("%s  -  %s   :  %lu\n", buf, url_2, strlen(url_2));
     if((fp = fopen(buf, "wb")) == NULL){
+        printf("ERROR fopen: %s\n", buf);
         perror("fopen");
+        exit(-1);
     }
+    free(url_2);
     return fp;
 }
 
