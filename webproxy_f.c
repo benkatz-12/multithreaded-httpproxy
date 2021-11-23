@@ -114,7 +114,7 @@ int cache_hit(char* url, int timeout){
         perror("Stat");
     }
     time_t now = time(NULL);
-    if((filestat.st_mtime - now) > timeout){
+    if((now - filestat.st_mtime) > timeout){
         return 0;
     }
     //printf("Time now: %ld -- Time Modified: %ld\n", now, filestat.st_mtime);
