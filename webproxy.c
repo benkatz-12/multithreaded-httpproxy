@@ -1,7 +1,8 @@
 #include "webproxy.h"
 
 int main(int argc, char** argv){
-    int proxy_port, proxyfd, *clientfdp, clientlen=sizeof(struct sockaddr_in);
+    int proxy_port, proxyfd, *clientfdp;
+    socklen_t clientlen=sizeof(struct sockaddr_in);
     struct sockaddr_in clientaddr;
     pthread_t tid;
     
@@ -51,7 +52,7 @@ int parse(int clientfd, struct server_conn *serv){
     char* version;
     char* rl_path;
     char* cmp_method = (char*)malloc(5);
-    printf("Clientfd ENTER: %d\n", clientfd);
+    //printf("Clientfd ENTER: %d\n", clientfd);
     while((n = read(clientfd, buf, MAXBUF)) != 0){
         if(n < 0){
             perror("Read");
@@ -128,7 +129,7 @@ int parse(int clientfd, struct server_conn *serv){
         }
         break; //FIND SOME OTHER CONDITION TO BREAK ON
     }
-    printf("Clientfd EXIT: %d  -  %s\n", clientfd, serv->path);
+    //printf("Clientfd EXIT: %d  -  %s\n", clientfd, serv->path);
     free(cmp_method);
     return e;
 }
@@ -136,9 +137,11 @@ int parse(int clientfd, struct server_conn *serv){
 
 
 void proxy_service(struct server_conn *serv, int clientfd){
-    int n, total_len, header_len;
+    int total_len, header_len;
     int new=1;
     int cur_len = 0;
+    char* serv_response;
+    FILE* fp;
     char buf[MAXBUF];
     char request_line[11 + strlen(serv->path) + 36];
     snprintf(request_line, sizeof(request_line)+1, "GET %s %s\r\n", serv->path, serv->version);
@@ -153,7 +156,15 @@ void proxy_service(struct server_conn *serv, int clientfd){
     
     write(serv->servfd, buf, strlen(buf));
     bzero(buf, MAXBUF);
-    n = read_in(buf, serv->servfd, clientfd);
+    serv_response = read_in(buf, serv->servfd, clientfd, &total_len);
+    fp = open_file(serv->url);
+    //fprintf(fp, "%s", serv_response);
+    fwrite(serv_response, sizeof(char), total_len, fp); //need some way to get total length
+    fclose(fp);
+    printf("SERV RESPONSE: %d\n", total_len);
+    printf("Here\n");
+    free(serv_response);
+    printf("Here\n");
 }
 
 

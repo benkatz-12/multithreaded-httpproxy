@@ -133,17 +133,16 @@ int get_headerlength(char* buf_2){ //almost there
     return strlen(temp2);
 }
 
-int read_in(char* buf, int servfd, int clientfd){
-    int n;
-    int new = 1;
-    int d_left = MAXBUF;
-    char* bufp = buf;
+char* read_in(char* buf, int servfd, int clientfd, int* total_len){
+    int d_left = MAXBUF, new = 1, n;
+    char* serv_response = (char*)malloc(1);
+    char* zapp;
     int cur_len = 0;
     int content_length, header_length, total_length;
 
     while(cur_len < total_length){
         if((n = read(servfd, buf, d_left)) < 0){
-            return -1;
+            exit(-1);
         }
         if(new){
             char* buf_2 = (char* )malloc(strlen(buf)+1);
@@ -153,14 +152,22 @@ int read_in(char* buf, int servfd, int clientfd){
             total_length = header_length + content_length+2;
             new = 0;
             free(buf_2);
+            
+            serv_response = realloc(serv_response, total_length+1);
+            zapp = serv_response;
         }
 
         cur_len += n;
         write(clientfd, buf, n);
+        //strncat(serv_response, buf, n);
+        memcpy(serv_response, buf, n);
+        serv_response += n;
         bzero(buf, MAXBUF);
     }
-
-    return (n - d_left);
+    *total_len = total_length;
+    serv_response = zapp;
+    serv_response[total_length-1] = '\0';
+    return serv_response;
 }
 
 
@@ -271,7 +278,7 @@ int open_servfd(struct server_conn *serv){
     memcpy(&serv_addr.sin_addr, serv->server->h_addr, serv->server->h_length);
     //printf("IP (%d): %s\n", servfd, inet_ntoa(serv_addr.sin_addr));
     serv_addr.sin_family = AF_INET;
-    if((serv->port == NULL) || (strlen(serv->port) == 0)){
+    if((strlen(serv->port) == 0)){
         serv_addr.sin_port = htons(80);
     }else{
         serv_addr.sin_port = htons(atoi(serv->port));
