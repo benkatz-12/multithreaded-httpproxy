@@ -47,21 +47,6 @@ int write_to_file(char* buf, char* url){
     return 1;
 }
 
-int check_cache(struct server_conn *serv){
-    if(access(serv->url, F_OK) == 0){
-        //cache_hit(serv->url);
-        return 1;
-    }
-    return 0; // cache miss
-}
-
-void pexit(int clientfd){
-    close(clientfd);
-    fflush(stdout);
-    pthread_exit(NULL);
-}
-
-
 void compute_hash(char* url, char* hash){
     FILE* fp;
     char path[50];
@@ -76,6 +61,86 @@ void compute_hash(char* url, char* hash){
     path[32] = '\0';
     strncpy(hash, path, 33);
 }
+
+void url_to_path(char* url, char* path){
+    char hash[35];
+
+    char* url_2 = malloc(strlen(url)+3);
+    memcpy(url_2, url, strlen(url)+1);
+    
+    strcat(path, "./cache/");
+    compute_hash(url_2, hash);
+    strcat(path, hash);
+    free(url_2);
+}
+
+void send_cache(int clientfd, char* url){
+    char path[45];
+    bzero(path, 45);
+    url_to_path(url, path);
+
+    FILE* fp;
+    char buf[MAXBUF];
+    int f_size, quotient, remainder;
+    size_t c;
+    fp = fopen(path, "rb");
+    if(fp){
+        fseek(fp, 0, SEEK_END);
+        f_size = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        quotient = f_size / MAXBUF;
+    	remainder = f_size % MAXBUF;
+        //printf("Quotient - %d // Remainder - %d\n", quotient, remainder);
+    	for(int i = 0; i < quotient; i++){
+    		c = fread(buf, MAXBUF, 1, fp);
+    		write(clientfd, buf, c);
+            bzero(buf, MAXBUF);
+    	}
+    	c = fread(buf, 1, remainder, fp);
+    	write(clientfd, buf, c);
+    }else{
+        perror("fopen - send_cache");
+    }
+    //printf("SENT FROM CACHE\n");
+}
+
+int cache_hit(char* url, int timeout){
+    char path[45];
+    bzero(path, 45);
+    url_to_path(url, path);
+
+    struct stat filestat;
+    if((stat(path, &filestat)) == -1){
+        perror("Stat");
+    }
+    time_t now = time(NULL);
+    if((filestat.st_mtime - now) > timeout){
+        return 0;
+    }
+    //printf("Time now: %ld -- Time Modified: %ld\n", now, filestat.st_mtime);
+    return 1;
+    
+}
+
+
+int check_cache(char* url){
+    char path[45];
+    bzero(path, 45);
+    url_to_path(url, path);
+    if(access(path, F_OK) == 0){
+        return 1;
+    }
+    return 0; // cache miss
+}
+
+void pexit(int clientfd){
+    close(clientfd);
+    fflush(stdout);
+    pthread_exit(NULL);
+}
+
+
+
 
 FILE* open_file(char* url){
     FILE* fp;

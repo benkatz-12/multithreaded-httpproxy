@@ -1,30 +1,35 @@
 #include "webproxy.h"
 
 int main(int argc, char** argv){
-    int proxy_port, proxyfd, *clientfdp;
+    int proxy_port, proxyfd, *clientfdp, timeout;
     socklen_t clientlen=sizeof(struct sockaddr_in);
     struct sockaddr_in clientaddr;
+    
     pthread_t tid;
     
 
-    if(argc != 2){
-        fprintf(stderr, "Correct Usage: ./webproxy <port number>\n");
+    if(argc != 3){
+        fprintf(stderr, "Correct Usage: ./webproxy <port number> <cache timeout>\n");
         exit(1);
     }
 
     proxy_port = atoi(argv[1]);
+    
     
     if((proxyfd = open_proxyfd(proxy_port)) < 0){
         exit(1);
     }
 
     while(1){
+        struct args *t_args = (struct args*)malloc(sizeof(struct args));
+        t_args->timeout = atoi(argv[2]);
         clientfdp = malloc(sizeof(int)); /* malloc client socket descriptor to be able to free later // clientaddr struct is not used, so overwrite is OK*/
         if((*clientfdp = accept(proxyfd, (struct sockaddr *)&clientaddr, &clientlen)) < 0){
             perror("Accept");
             exit(1);
         }
-        pthread_create(&tid, NULL, thread, clientfdp);
+        t_args->clientfdp = clientfdp;
+        pthread_create(&tid, NULL, thread, (void *)t_args);
     }
 
     close(proxyfd);
@@ -170,10 +175,11 @@ void proxy_service(struct server_conn *serv, int clientfd){
 void * thread(void* vargp){
     int n, c_stat;
     struct server_conn serv;
-    int clientfd = *((int*)vargp);
-    
+    int clientfd = *(((struct args*)vargp)->clientfdp);
+    int timeout = ((struct args*)vargp)->timeout;
     pthread_detach(pthread_self()); /* Detach current thread so there is no pthread_join to wait on */
-    free(vargp); /* Free clientfdp to all accepting new clients */
+    free(vargp); /* Free arg struct to all accepting new clients */
+    
     
     //parse http request
     if((n=parse(clientfd, &serv)) < 0){ 
@@ -186,7 +192,15 @@ void * thread(void* vargp){
     }
 
     //check if file in cache
-    c_stat = check_cache(&serv);
+    c_stat = check_cache(serv.url);
+
+    //if file is in cache, check timeout and send if clear
+    if(c_stat){
+        if(cache_hit(serv.url, timeout)){
+            send_cache(clientfd, serv.url);
+            pexit(clientfd);
+        }
+    }
 
 
     //open connection to requested http server
@@ -198,7 +212,4 @@ void * thread(void* vargp){
     pexit(clientfd);
     
     exit(0);
-    // close(clientfd);
-    // fflush(stdout);
-    // pthread_exit(NULL);
 }
