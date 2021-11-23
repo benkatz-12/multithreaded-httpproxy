@@ -133,12 +133,11 @@ int get_headerlength(char* buf_2){ //almost there
     return strlen(temp2);
 }
 
-char* read_in(char* buf, int servfd, int clientfd, int* total_len){
+char* read_in(char* buf, int servfd, int clientfd, int* total_len, char* serv_response){
     int d_left = MAXBUF, new = 1, n;
-    char* serv_response = (char*)malloc(1);
     char* zapp;
     int cur_len = 0;
-    int content_length, header_length, total_length;
+    int content_length, header_length, total_length = 1;
 
     while(cur_len < total_length){
         if((n = read(servfd, buf, d_left)) < 0){
@@ -150,6 +149,7 @@ char* read_in(char* buf, int servfd, int clientfd, int* total_len){
             header_length = get_headerlength(buf_2);
             content_length = get_contentlength(buf_2);
             total_length = header_length + content_length+2;
+
             new = 0;
             free(buf_2);
             
@@ -158,15 +158,19 @@ char* read_in(char* buf, int servfd, int clientfd, int* total_len){
         }
 
         cur_len += n;
+
         write(clientfd, buf, n);
-        //strncat(serv_response, buf, n);
+
         memcpy(serv_response, buf, n);
         serv_response += n;
         bzero(buf, MAXBUF);
     }
+
     *total_len = total_length;
     serv_response = zapp;
+    
     serv_response[total_length-1] = '\0';
+
     return serv_response;
 }
 

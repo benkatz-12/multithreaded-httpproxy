@@ -140,7 +140,7 @@ void proxy_service(struct server_conn *serv, int clientfd){
     int total_len, header_len;
     int new=1;
     int cur_len = 0;
-    char* serv_response;
+    char* serv_response = (char*)malloc(100000);
     FILE* fp;
     char buf[MAXBUF];
     char request_line[11 + strlen(serv->path) + 36];
@@ -156,15 +156,13 @@ void proxy_service(struct server_conn *serv, int clientfd){
     
     write(serv->servfd, buf, strlen(buf));
     bzero(buf, MAXBUF);
-    serv_response = read_in(buf, serv->servfd, clientfd, &total_len);
+    serv_response = read_in(buf, serv->servfd, clientfd, &total_len, serv_response);
     fp = open_file(serv->url);
     //fprintf(fp, "%s", serv_response);
-    fwrite(serv_response, sizeof(char), total_len, fp); //need some way to get total length
+    fwrite(serv_response, sizeof(char), total_len, fp);
     fclose(fp);
-    printf("SERV RESPONSE: %d\n", total_len);
-    printf("Here\n");
+ 
     free(serv_response);
-    printf("Here\n");
 }
 
 
@@ -197,8 +195,8 @@ void * thread(void* vargp){
     }
     
     proxy_service(&serv, clientfd);
-
     pexit(clientfd);
+    
     exit(0);
     // close(clientfd);
     // fflush(stdout);
