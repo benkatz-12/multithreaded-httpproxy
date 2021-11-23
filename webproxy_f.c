@@ -62,16 +62,20 @@ void pexit(int clientfd){
 }
 
 
-unsigned int compute_hash(char* url){
-    //unsigned int hash;
-    char buf[1000];
-    //sprintf(buf, "%d", url);
-    //hash = atoi(buf);
-    unsigned long hash = 5381;
-    int c;
-    while ((c = *url++))
-        hash = ((hash << 5) + hash) + c;   //djb2 by Dan Bernstein
-    return hash;
+char* compute_hash(char* url){
+    FILE* fp;
+    char path[50];
+    const char* a;
+    char cmd[19 + strlen(url)];
+    sprintf(cmd, "echo -n '%s' | md5sum", url);
+
+    fp = popen(cmd, "r");
+    while (fgets(path, 50, fp) != NULL) {
+        ;
+    }
+    path[32] = '\0';
+
+    return path;
 }
 
 FILE* open_file(char* url){
@@ -84,11 +88,12 @@ FILE* open_file(char* url){
     memcpy(url_2, url, strlen(url));
 
     strcat(buf, "./cache/");
-    unsigned long hashed_url = compute_hash(url_2);
-    sprintf(buf2, "%lu", hashed_url);
+    char* hashed_url = compute_hash(url_2);
+    
+    sprintf(buf2, "%s", hashed_url);
 
     strcat(buf, buf2);
-
+    printf("%s\n", buf);
     if((fp = fopen(buf, "wb")) == NULL){
         perror("fopen");
     }

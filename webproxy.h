@@ -9,7 +9,7 @@
 #include <unistd.h> /* close */
 #include <pthread.h>
 
-#define LISTENQ 1 /* Maximim number of client connections */
+#define LISTENQ 10 /* Maximim number of client connections */
 #define MAXBUF 65535 /* Maximum buffer size */
 extern int h_errno;
 struct server_conn{
