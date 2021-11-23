@@ -8,13 +8,21 @@
 #include <strings.h> /* bzero, bcopy */
 #include <unistd.h> /* close */
 #include <pthread.h>
+#include <sys/stat.h>
+#include <time.h>
 
 #define LISTENQ 10 /* Maximim number of client connections */
 #define MAXBUF 65535 /* Maximum buffer size */
 extern int h_errno;
+struct args{
+    int* clientfdp;
+    int timeout;
+};
+
 struct server_conn{
     struct hostent *server;
     int servfd;
+    char url[1000];
     char path[1000];
     char host[1000];
     char port[10];
@@ -28,5 +36,10 @@ void serror(int clientfd, int type); //error handler 0=bad request 1=not found
 int open_servfd(struct server_conn *serv);
 int check_if_get(char* buf);
 int hostname_auth(struct server_conn *serv);
-int read_in(char* buf, int servfd, int clientfd);
+char* read_in(char* buf, int servfd, int clientfd, int* total_len, char* serv_response);
 void edit_conn(char* body);
+int check_cache(char* url);
+void pexit(int clientfd);
+FILE* open_file(char* url);
+int cache_hit(char* url, int timeout);
+void send_cache(int clientfd, char* url);

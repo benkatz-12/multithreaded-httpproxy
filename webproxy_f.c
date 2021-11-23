@@ -33,6 +33,142 @@ int hostname_auth(struct server_conn *serv){
 }
 
 
+int write_to_file(char* buf, char* url){
+    FILE* fp;
+    int len = strlen(buf);
+
+    if((fp = fopen(url, "w")) == NULL){
+        perror("fopen");
+        return 0;
+    }
+    fprintf(fp, "%s", buf);
+
+    fclose(fp);
+    return 1;
+}
+
+void compute_hash(char* url, char* hash){
+    FILE* fp;
+    char path[50];
+    const char* a;
+    char cmd[19 + strlen(url)];
+    sprintf(cmd, "echo -n '%s' | md5sum", url);
+    //printf("CMD: %s\n", cmd);
+    fp = popen(cmd, "r");
+    while (fgets(path, 50, fp) != NULL) {
+        ;
+    }
+    path[32] = '\0';
+    strncpy(hash, path, 33);
+}
+
+void url_to_path(char* url, char* path){
+    char hash[35];
+
+    char* url_2 = malloc(strlen(url)+3);
+    memcpy(url_2, url, strlen(url)+1);
+    
+    strcat(path, "./cache/");
+    compute_hash(url_2, hash);
+    strcat(path, hash);
+    free(url_2);
+}
+
+void send_cache(int clientfd, char* url){
+    char path[45];
+    bzero(path, 45);
+    url_to_path(url, path);
+
+    FILE* fp;
+    char buf[MAXBUF];
+    int f_size, quotient, remainder;
+    size_t c;
+    fp = fopen(path, "rb");
+    if(fp){
+        fseek(fp, 0, SEEK_END);
+        f_size = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        quotient = f_size / MAXBUF;
+    	remainder = f_size % MAXBUF;
+        //printf("Quotient - %d // Remainder - %d\n", quotient, remainder);
+    	for(int i = 0; i < quotient; i++){
+    		c = fread(buf, MAXBUF, 1, fp);
+    		write(clientfd, buf, c);
+            bzero(buf, MAXBUF);
+    	}
+    	c = fread(buf, 1, remainder, fp);
+    	write(clientfd, buf, c);
+    }else{
+        perror("fopen - send_cache");
+    }
+    //printf("SENT FROM CACHE\n");
+}
+
+int cache_hit(char* url, int timeout){
+    char path[45];
+    bzero(path, 45);
+    url_to_path(url, path);
+
+    struct stat filestat;
+    if((stat(path, &filestat)) == -1){
+        perror("Stat");
+    }
+    time_t now = time(NULL);
+    if((filestat.st_mtime - now) > timeout){
+        return 0;
+    }
+    //printf("Time now: %ld -- Time Modified: %ld\n", now, filestat.st_mtime);
+    return 1;
+    
+}
+
+
+int check_cache(char* url){
+    char path[45];
+    bzero(path, 45);
+    url_to_path(url, path);
+    if(access(path, F_OK) == 0){
+        return 1;
+    }
+    return 0; // cache miss
+}
+
+void pexit(int clientfd){
+    close(clientfd);
+    fflush(stdout);
+    pthread_exit(NULL);
+}
+
+
+
+
+FILE* open_file(char* url){
+    FILE* fp;
+    char hash[35];
+    char buf[1000];
+    char buf2[1000];
+
+    char* url_2 = malloc(strlen(url)+3);
+    memcpy(url_2, url, strlen(url)+1);
+
+    strcat(buf, "./cache/");
+    compute_hash(url_2, hash);
+    
+    sprintf(buf2, "%s", hash);
+
+    strcat(buf, buf2);
+    //printf("%s  -  %s   :  %lu\n", buf, url_2, strlen(url_2));
+    if((fp = fopen(buf, "wb")) == NULL){
+        printf("ERROR fopen: %s\n", buf);
+        perror("fopen");
+        exit(-1);
+    }
+    free(url_2);
+    return fp;
+}
+
+
+
 //======================================
 // I/O helpers
 //======================================
@@ -69,17 +205,15 @@ int get_headerlength(char* buf_2){ //almost there
     return strlen(temp2);
 }
 
-int read_in(char* buf, int servfd, int clientfd){
-    int n;
-    int new = 1;
-    int d_left = MAXBUF;
-    char* bufp = buf;
+char* read_in(char* buf, int servfd, int clientfd, int* total_len, char* serv_response){
+    int d_left = MAXBUF, new = 1, n;
+    char* zapp;
     int cur_len = 0;
-    int content_length, header_length, total_length;
+    int content_length, header_length, total_length = 1;
 
     while(cur_len < total_length){
         if((n = read(servfd, buf, d_left)) < 0){
-            return -1;
+            exit(-1);
         }
         if(new){
             char* buf_2 = (char* )malloc(strlen(buf)+1);
@@ -87,17 +221,29 @@ int read_in(char* buf, int servfd, int clientfd){
             header_length = get_headerlength(buf_2);
             content_length = get_contentlength(buf_2);
             total_length = header_length + content_length+2;
+
             new = 0;
             free(buf_2);
+            
+            serv_response = realloc(serv_response, total_length);
+            zapp = serv_response;
         }
 
         cur_len += n;
+
         write(clientfd, buf, n);
-        
+
+        memcpy(serv_response, buf, n);
+        serv_response += n;
         bzero(buf, MAXBUF);
     }
 
-    return (n - d_left);
+    *total_len = total_length;
+    serv_response = zapp;
+    
+    //serv_response[total_length-1] = '\0';
+
+    return serv_response;
 }
 
 
@@ -208,7 +354,7 @@ int open_servfd(struct server_conn *serv){
     memcpy(&serv_addr.sin_addr, serv->server->h_addr, serv->server->h_length);
     //printf("IP (%d): %s\n", servfd, inet_ntoa(serv_addr.sin_addr));
     serv_addr.sin_family = AF_INET;
-    if((serv->port == NULL) || (strlen(serv->port) == 0)){
+    if((strlen(serv->port) == 0)){
         serv_addr.sin_port = htons(80);
     }else{
         serv_addr.sin_port = htons(atoi(serv->port));

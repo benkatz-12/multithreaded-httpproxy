@@ -1,29 +1,35 @@
 #include "webproxy.h"
 
 int main(int argc, char** argv){
-    int proxy_port, proxyfd, *clientfdp, clientlen=sizeof(struct sockaddr_in);
+    int proxy_port, proxyfd, *clientfdp, timeout;
+    socklen_t clientlen=sizeof(struct sockaddr_in);
     struct sockaddr_in clientaddr;
+    
     pthread_t tid;
     
 
-    if(argc != 2){
-        fprintf(stderr, "Correct Usage: ./webproxy <port number>\n");
+    if(argc != 3){
+        fprintf(stderr, "Correct Usage: ./webproxy <port number> <cache timeout>\n");
         exit(1);
     }
 
     proxy_port = atoi(argv[1]);
+    
     
     if((proxyfd = open_proxyfd(proxy_port)) < 0){
         exit(1);
     }
 
     while(1){
+        struct args *t_args = (struct args*)malloc(sizeof(struct args));
+        t_args->timeout = atoi(argv[2]);
         clientfdp = malloc(sizeof(int)); /* malloc client socket descriptor to be able to free later // clientaddr struct is not used, so overwrite is OK*/
         if((*clientfdp = accept(proxyfd, (struct sockaddr *)&clientaddr, &clientlen)) < 0){
             perror("Accept");
             exit(1);
         }
-        pthread_create(&tid, NULL, thread, clientfdp);
+        t_args->clientfdp = clientfdp;
+        pthread_create(&tid, NULL, thread, (void *)t_args);
     }
 
     close(proxyfd);
@@ -51,7 +57,7 @@ int parse(int clientfd, struct server_conn *serv){
     char* version;
     char* rl_path;
     char* cmp_method = (char*)malloc(5);
-    printf("Clientfd ENTER: %d\n", clientfd);
+    //printf("Clientfd ENTER: %d\n", clientfd);
     while((n = read(clientfd, buf, MAXBUF)) != 0){
         if(n < 0){
             perror("Read");
@@ -90,6 +96,11 @@ int parse(int clientfd, struct server_conn *serv){
         
 
         //populate serv struct
+        if(strlen(path_2) < 1000){
+            strncpy(serv->url, path_2, strlen(path_2));
+        }else{e=-1;return e;}
+
+
         if(strlen(req_path) < 1000){
             strncpy(serv->path, req_path, strlen(req_path));
         }else{e=-1;return e;}
@@ -123,7 +134,7 @@ int parse(int clientfd, struct server_conn *serv){
         }
         break; //FIND SOME OTHER CONDITION TO BREAK ON
     }
-    printf("Clientfd EXIT: %d  -  %s\n", clientfd, serv->path);
+    //printf("Clientfd EXIT: %d  -  %s\n", clientfd, serv->path);
     free(cmp_method);
     return e;
 }
@@ -131,9 +142,11 @@ int parse(int clientfd, struct server_conn *serv){
 
 
 void proxy_service(struct server_conn *serv, int clientfd){
-    int n, total_len, header_len;
+    int total_len, header_len;
     int new=1;
     int cur_len = 0;
+    char* serv_response = (char*)malloc(100000);
+    FILE* fp;
     char buf[MAXBUF];
     char request_line[11 + strlen(serv->path) + 36];
     snprintf(request_line, sizeof(request_line)+1, "GET %s %s\r\n", serv->path, serv->version);
@@ -148,18 +161,25 @@ void proxy_service(struct server_conn *serv, int clientfd){
     
     write(serv->servfd, buf, strlen(buf));
     bzero(buf, MAXBUF);
-    n = read_in(buf, serv->servfd, clientfd);
+    serv_response = read_in(buf, serv->servfd, clientfd, &total_len, serv_response);
+    fp = open_file(serv->url);
+    //fprintf(fp, "%s", serv_response);
+    fwrite(serv_response, sizeof(char), total_len, fp);
+    fclose(fp);
+ 
+    free(serv_response);
 }
 
 
 /* Thread routine */
 void * thread(void* vargp){
-    int n;
+    int n, c_stat;
     struct server_conn serv;
-    int clientfd = *((int*)vargp);
-    
+    int clientfd = *(((struct args*)vargp)->clientfdp);
+    int timeout = ((struct args*)vargp)->timeout;
     pthread_detach(pthread_self()); /* Detach current thread so there is no pthread_join to wait on */
-    free(vargp); /* Free clientfdp to all accepting new clients */
+    free(vargp); /* Free arg struct to all accepting new clients */
+    
     
     //parse http request
     if((n=parse(clientfd, &serv)) < 0){ 
@@ -171,14 +191,25 @@ void * thread(void* vargp){
         serror(clientfd, -2);
     }
 
+    //check if file in cache
+    c_stat = check_cache(serv.url);
+
+    //if file is in cache, check timeout and send if clear
+    if(c_stat){
+        if(cache_hit(serv.url, timeout)){
+            send_cache(clientfd, serv.url);
+            pexit(clientfd);
+        }
+    }
+
+
     //open connection to requested http server
     if((serv.servfd=open_servfd(&serv)) < 0){
         serror(clientfd, -3);
     }
     
     proxy_service(&serv, clientfd);
-
-    close(clientfd);
-    fflush(stdout);
-    pthread_exit(NULL);
+    pexit(clientfd);
+    
+    exit(0);
 }
