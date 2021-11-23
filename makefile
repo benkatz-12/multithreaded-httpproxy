@@ -10,4 +10,4 @@ webproxymake: webproxy.o webproxy_f.o
 
 clean:
 	rm ./cache/*
-	rm webproxy webproxy_f.o webproxy.o
+	rm webproxy webproxy_f.o webproxy.o hostname_ip.txt

@@ -20,15 +20,26 @@ void edit_conn(char* body){
  *     on success populate server_conn struct
  *     on failure send back a 404 not found error
  */
-int hostname_auth(struct server_conn *serv){
-    //printf("Hostname")
+int hostname_auth(struct server_conn *serv, pthread_mutex_t* lock){
     if((serv->server = gethostbyname(serv->host)) == NULL){
-        //herror("gethostbyname");
         if(serv->server == NULL){
             printf("NULL: %d\n", serv->servfd);
         }else{printf("BADSERVER: %s\n", serv->host);}
         return -1;
     }
+    //if hostname is good, then write it to the hostname-ip cache
+    char buf[300];
+    struct sockaddr_in addr;
+    FILE* fp;
+    memcpy(&addr.sin_addr, serv->server->h_addr, serv->server->h_length);
+    bzero(buf, 300);
+    sprintf(buf, "%s:%s\n", serv->host, inet_ntoa(addr.sin_addr));
+
+    pthread_mutex_lock(lock);
+    fp = fopen("hostname_ip.txt", "a+");
+    fprintf(fp, "%s", buf);
+    fclose(fp);
+    pthread_mutex_unlock(lock);
     return 0;
 }
 
@@ -74,6 +85,49 @@ void url_to_path(char* url, char* path){
     free(url_2);
 }
 
+void pexit(int clientfd){
+    close(clientfd);
+    fflush(stdout);
+    pthread_exit(NULL);
+}
+//======================================
+// Hostname - IP helpers
+//======================================
+
+int check_hostname_ip(char* host, char* ip, pthread_mutex_t* lock){
+    FILE* fp;
+    char buf[300];
+    char* ip_2;
+    char* hostname;
+    int c;
+    pthread_mutex_lock(lock);
+    fp = fopen("hostname_ip.txt", "r");
+    if(fp){
+        while(fgets(buf, 300, fp)){
+            hostname = strtok(buf, ":");
+            if((strcmp(host, hostname)) == 0){
+                ip_2 = buf + strlen(hostname)+1;
+                memcpy(ip, ip_2, strlen(ip_2)-1);
+                fclose(fp);
+                pthread_mutex_unlock(lock);
+                return 1;
+            }
+            bzero(buf, 300);
+        }
+    }else{
+        perror("fopen - check_hostname_ip");
+    }
+    fclose(fp);
+    pthread_mutex_unlock(lock);
+    return 0;
+}
+
+
+
+
+//======================================
+// Page caching
+//======================================
 void send_cache(int clientfd, char* url){
     char path[45];
     bzero(path, 45);
@@ -114,14 +168,13 @@ int cache_hit(char* url, int timeout){
         perror("Stat");
     }
     time_t now = time(NULL);
-    if((filestat.st_mtime - now) > timeout){
+    if((now - filestat.st_mtime) > timeout){
         return 0;
     }
-    //printf("Time now: %ld -- Time Modified: %ld\n", now, filestat.st_mtime);
+    //printf("Time diff: %ld\n", filestat.st_mtime - now);
     return 1;
     
 }
-
 
 int check_cache(char* url){
     char path[45];
@@ -132,15 +185,6 @@ int check_cache(char* url){
     }
     return 0; // cache miss
 }
-
-void pexit(int clientfd){
-    close(clientfd);
-    fflush(stdout);
-    pthread_exit(NULL);
-}
-
-
-
 
 FILE* open_file(char* url){
     FILE* fp;
@@ -165,6 +209,34 @@ FILE* open_file(char* url){
     }
     free(url_2);
     return fp;
+}
+
+//======================================
+// Blacklist authentication
+//======================================
+
+int check_blacklist_for_hostname(char* hostname){
+    FILE* fp;
+    char buf[500];
+    int c;
+    fp = fopen("blacklist.txt", "r");
+    if(fp){
+        while(fgets(buf, 500, fp)){
+            if(buf[strlen(buf)-1] == '\n'){ //cut off newlines
+                buf[strlen(buf)-1] = '\0';
+            }
+            //printf("Hostname - %s // Blacklist - %s\n", hostname, buf);
+            if((strcmp(hostname, buf)) == 0){
+                fclose(fp);
+                return -1;
+            }
+            bzero(buf, 500);
+        }
+    }else{
+        perror("fopen - check_blacklist_for_hostname");
+    }
+    fclose(fp);
+    return 0;
 }
 
 
@@ -282,6 +354,8 @@ void serror(int clientfd, int type){
         strcpy(buf, "HTTP/1.1 400 Bad Request\r\n\r\n");
     }else if(type == -3){
         strcpy(buf, "HTTP/1.1 500 Internal Proxy Error\r\n\r\n");
+    }else if(type == -4){
+        strcpy(buf, "HTTP/1.1 403 Forbidden\r\n\r\n");
     }
     
     printf("client FD: %d\n",clientfd);
@@ -340,7 +414,7 @@ int open_proxyfd(int proxy_port){
 /*
  * open_servfd - opens connection to requested http serv
  */
-int open_servfd(struct server_conn *serv){
+int open_servfd(struct server_conn *serv, char* ip){
     int servfd;
     struct sockaddr_in serv_addr;
         
@@ -350,8 +424,14 @@ int open_servfd(struct server_conn *serv){
         return -1;
     }
     
-    /*copy addr from hostent to sockaddr_in and populate sockaddr_in struct*/
-    memcpy(&serv_addr.sin_addr, serv->server->h_addr, serv->server->h_length);
+    if(serv->from_cache){
+        /*copy addr from serv struct*/
+        serv_addr.sin_addr.s_addr = inet_addr(ip);
+    }else{
+        /*copy addr from hostent to sockaddr_in and populate sockaddr_in struct*/
+        memcpy(&serv_addr.sin_addr, serv->server->h_addr, serv->server->h_length);
+    }
+
     //printf("IP (%d): %s\n", servfd, inet_ntoa(serv_addr.sin_addr));
     serv_addr.sin_family = AF_INET;
     if((strlen(serv->port) == 0)){
