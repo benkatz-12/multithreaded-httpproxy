@@ -214,6 +214,38 @@ FILE* open_file(char* url){
 //======================================
 // Blacklist authentication
 //======================================
+int check_blacklist_for_ip(struct server_conn *serv, char* ip){
+    FILE* fp;
+    char buf[300];
+    char* ip_addr;
+    int c;
+    if(serv->from_cache){
+        ip_addr = ip;
+        
+    }else{
+        struct sockaddr_in addr;
+        memcpy(&addr.sin_addr, serv->server->h_addr, serv->server->h_length);
+        ip_addr = inet_ntoa(addr.sin_addr);
+    }
+    ip_addr[strlen(ip_addr)] = '\0';
+    fp = fopen("blacklist.txt", "r");
+    if(fp){
+        while(fgets(buf, 300, fp)){
+            if(buf[strlen(buf)-1] == '\n'){ //cut off newlines
+                buf[strlen(buf)-1] = '\0';
+            }
+            if((strcmp(ip_addr, buf)) == 0){
+                fclose(fp);
+                return -1;
+            }
+            bzero(buf, 300);
+        }
+    }else{
+        perror("fopen - check_blacklist_for_ip");
+    }
+    fclose(fp);
+    return 0;
+}
 
 int check_blacklist_for_hostname(char* hostname){
     FILE* fp;

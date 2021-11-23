@@ -218,9 +218,9 @@ void * thread(void* vargp){
     }
 
     //check if ip address is in blacklist
-    // if(check_blacklist_for_ip(&serv, ip) == -1){
-    //     serror(clientfd, -4);
-    // }
+    if(check_blacklist_for_ip(&serv, ip) == -1){
+        serror(clientfd, -4);
+    }
 
     //check if file in cache
     c_stat = check_cache(serv.url);

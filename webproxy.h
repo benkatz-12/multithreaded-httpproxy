@@ -47,4 +47,4 @@ int cache_hit(char* url, int timeout);
 void send_cache(int clientfd, char* url);
 int check_blacklist_for_hostname(char* hostname);
 int check_hostname_ip(char* host, char* ip, pthread_mutex_t* lock);
-//int check_blacklist_for_ip(struct server_conn *serv, char* ip);
+int check_blacklist_for_ip(struct server_conn *serv, char* ip);
