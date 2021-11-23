@@ -153,7 +153,7 @@ char* read_in(char* buf, int servfd, int clientfd, int* total_len, char* serv_re
             new = 0;
             free(buf_2);
             
-            serv_response = realloc(serv_response, total_length+1);
+            serv_response = realloc(serv_response, total_length);
             zapp = serv_response;
         }
 
@@ -169,7 +169,7 @@ char* read_in(char* buf, int servfd, int clientfd, int* total_len, char* serv_re
     *total_len = total_length;
     serv_response = zapp;
     
-    serv_response[total_length-1] = '\0';
+    //serv_response[total_length-1] = '\0';
 
     return serv_response;
 }
