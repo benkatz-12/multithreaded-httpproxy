@@ -70,7 +70,6 @@ int parse(int clientfd, struct server_conn *serv){
     char* version;
     char* rl_path;
     char* cmp_method = (char*)malloc(5);
-    //printf("Clientfd ENTER: %d\n", clientfd);
     while((n = read(clientfd, buf, MAXBUF)) != 0){
         if(n < 0){
             perror("Read");
@@ -81,9 +80,7 @@ int parse(int clientfd, struct server_conn *serv){
             e=-2;return e;
         }
 
-        //printf("Server received the following request: %d bytes -  from %d : \n%s\n",n,clientfd, buf);
         //body of parsing
-        
         request_line = strtok(buf, delim);
         body = buf + strlen(request_line)+2;
         method = strtok(request_line, " ");
@@ -99,14 +96,10 @@ int parse(int clientfd, struct server_conn *serv){
         char* temp;
         //prepending '/' to any path
         req_path = strstr(path_2, host) + strlen(host);
-        //printf("Req: %s  : %d\n", req_path, strlen(req_path));
 
-        
         if(strlen(req_path) == 0){
             req_path = "/";
         }
-        
-        
 
         //populate serv struct
         if(strlen(path_2) < 1000){
@@ -145,9 +138,8 @@ int parse(int clientfd, struct server_conn *serv){
                 strncpy(serv->body, body, strlen(body));
             }else{e=-1;return e;}
         }
-        break; //FIND SOME OTHER CONDITION TO BREAK ON
+        break;
     }
-    //printf("Clientfd EXIT: %d  -  %s\n", clientfd, serv->path);
     free(cmp_method);
     return e;
 }
@@ -165,8 +157,7 @@ void proxy_service(struct server_conn *serv, int clientfd){
     snprintf(request_line, sizeof(request_line)+1, "GET %s %s\r\n", serv->path, serv->version);
 
     memcpy(buf, request_line, sizeof(request_line));
-    if(strlen(serv->body) == 0){  /////////////POSSIBLY NEED TO ADD A CONNECTION CLOSE IF IT DOESNT HAVE ONE
-        //strcat(buf, "Connection: close\r\n");
+    if(strlen(serv->body) == 0){ 
         strcat(buf, "\r\n");
     }else{
         strcat(buf, serv->body);
@@ -175,10 +166,23 @@ void proxy_service(struct server_conn *serv, int clientfd){
     write(serv->servfd, buf, strlen(buf));
     bzero(buf, MAXBUF);
     serv_response = read_in(buf, serv->servfd, clientfd, &total_len, serv_response);
+    if(serv_response == NULL){
+        serror(clientfd, -3);
+    }
+
+    if(strstr(serv_response, "Content-Type: text/html")){ //if its an html doc, then link prefetch
+        link_prefetch(serv_response);
+    }
+
+
     fp = open_file(serv->url);
-    //fprintf(fp, "%s", serv_response);
-    fwrite(serv_response, sizeof(char), total_len, fp);
-    fclose(fp);
+    if(fp){
+        fwrite(serv_response, sizeof(char), total_len, fp);
+        fclose(fp);
+    }else{
+        printf("FILE NOT CACHED\n");
+    }
+    
  
     free(serv_response);
 }

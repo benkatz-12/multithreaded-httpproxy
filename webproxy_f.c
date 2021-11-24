@@ -64,7 +64,6 @@ void compute_hash(char* url, char* hash){
     const char* a;
     char cmd[19 + strlen(url)];
     sprintf(cmd, "echo -n '%s' | md5sum", url);
-    //printf("CMD: %s\n", cmd);
     fp = popen(cmd, "r");
     while (fgets(path, 50, fp) != NULL) {
         ;
@@ -93,7 +92,11 @@ void pexit(int clientfd){
 //======================================
 // Hostname - IP helpers
 //======================================
-
+/*
+ * check_hostname_ip - checks the hostname-ip cache for any matching hostnames
+ *          returns 1 on success
+ *          returns 0 on failure
+ */
 int check_hostname_ip(char* host, char* ip, pthread_mutex_t* lock){
     FILE* fp;
     char buf[300];
@@ -144,7 +147,6 @@ void send_cache(int clientfd, char* url){
         fseek(fp, 0, SEEK_SET);
         quotient = f_size / MAXBUF;
     	remainder = f_size % MAXBUF;
-        //printf("Quotient - %d // Remainder - %d\n", quotient, remainder);
     	for(int i = 0; i < quotient; i++){
     		c = fread(buf, MAXBUF, 1, fp);
     		write(clientfd, buf, c);
@@ -171,11 +173,13 @@ int cache_hit(char* url, int timeout){
     if((now - filestat.st_mtime) > timeout){
         return 0;
     }
-    //printf("Time diff: %ld\n", filestat.st_mtime - now);
     return 1;
     
 }
 
+/*
+ * check_cache - checks page cache to see if file exists
+ */
 int check_cache(char* url){
     char path[45];
     bzero(path, 45);
@@ -186,6 +190,9 @@ int check_cache(char* url){
     return 0; // cache miss
 }
 
+/*
+ * open_file - opens cache file with the name as the md5sum 
+ */
 FILE* open_file(char* url){
     FILE* fp;
     char hash[35];
@@ -201,11 +208,11 @@ FILE* open_file(char* url){
     sprintf(buf2, "%s", hash);
 
     strcat(buf, buf2);
-    //printf("%s  -  %s   :  %lu\n", buf, url_2, strlen(url_2));
     if((fp = fopen(buf, "wb")) == NULL){
         printf("ERROR fopen: %s\n", buf);
         perror("fopen");
-        exit(-1);
+        //exit(-1);
+        return NULL;
     }
     free(url_2);
     return fp;
@@ -257,7 +264,6 @@ int check_blacklist_for_hostname(char* hostname){
             if(buf[strlen(buf)-1] == '\n'){ //cut off newlines
                 buf[strlen(buf)-1] = '\0';
             }
-            //printf("Hostname - %s // Blacklist - %s\n", hostname, buf);
             if((strcmp(hostname, buf)) == 0){
                 fclose(fp);
                 return -1;
@@ -284,8 +290,15 @@ int get_contentlength(char* buf){
         content = strstr(buf, "content-length");
     }
 
+    if(content == NULL){
+        if(strstr(buf, "chunked")){
+            content = strstr(buf, "\r\n\r\n") + 4;
+            content = strtok(content, "\r\n");
+            return strtol(content, NULL, 16);
+        }
+        
+    }
     temp = strchr(content, ':')+2;
-    
     if (temp != NULL){
         return atoi(temp);
     }
@@ -317,15 +330,17 @@ char* read_in(char* buf, int servfd, int clientfd, int* total_len, char* serv_re
 
     while(cur_len < total_length){
         if((n = read(servfd, buf, d_left)) < 0){
-            exit(-1);
+            return NULL;
         }
         if(new){
             char* buf_2 = (char* )malloc(strlen(buf)+1);
             memcpy(buf_2, buf, strlen(buf)+1);
-            header_length = get_headerlength(buf_2);
-            content_length = get_contentlength(buf_2);
-            total_length = header_length + content_length+2;
 
+            header_length = get_headerlength(buf_2);
+
+            content_length = get_contentlength(buf_2);
+
+            total_length = header_length + content_length+2;
             new = 0;
             free(buf_2);
             
@@ -344,11 +359,19 @@ char* read_in(char* buf, int servfd, int clientfd, int* total_len, char* serv_re
 
     *total_len = total_length;
     serv_response = zapp;
-    
-    //serv_response[total_length-1] = '\0';
 
     return serv_response;
 }
+
+
+
+//======================================
+// Link Prefetch
+//======================================
+void link_prefetch(char* serv_response){
+    ;
+}
+
 
 
 //======================================
