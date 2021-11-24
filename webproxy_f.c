@@ -20,15 +20,26 @@ void edit_conn(char* body){
  *     on success populate server_conn struct
  *     on failure send back a 404 not found error
  */
-int hostname_auth(struct server_conn *serv){
-    //printf("Hostname")
+int hostname_auth(struct server_conn *serv, pthread_mutex_t* lock){
     if((serv->server = gethostbyname(serv->host)) == NULL){
-        //herror("gethostbyname");
         if(serv->server == NULL){
             printf("NULL: %d\n", serv->servfd);
         }else{printf("BADSERVER: %s\n", serv->host);}
         return -1;
     }
+    //if hostname is good, then write it to the hostname-ip cache
+    char buf[300];
+    struct sockaddr_in addr;
+    FILE* fp;
+    memcpy(&addr.sin_addr, serv->server->h_addr, serv->server->h_length);
+    bzero(buf, 300);
+    sprintf(buf, "%s:%s\n", serv->host, inet_ntoa(addr.sin_addr));
+
+    pthread_mutex_lock(lock);
+    fp = fopen("hostname_ip.txt", "a+");
+    fprintf(fp, "%s", buf);
+    fclose(fp);
+    pthread_mutex_unlock(lock);
     return 0;
 }
 
@@ -53,7 +64,6 @@ void compute_hash(char* url, char* hash){
     const char* a;
     char cmd[19 + strlen(url)];
     sprintf(cmd, "echo -n '%s' | md5sum", url);
-    //printf("CMD: %s\n", cmd);
     fp = popen(cmd, "r");
     while (fgets(path, 50, fp) != NULL) {
         ;
@@ -74,6 +84,53 @@ void url_to_path(char* url, char* path){
     free(url_2);
 }
 
+void pexit(int clientfd){
+    close(clientfd);
+    fflush(stdout);
+    pthread_exit(NULL);
+}
+//======================================
+// Hostname - IP helpers
+//======================================
+/*
+ * check_hostname_ip - checks the hostname-ip cache for any matching hostnames
+ *          returns 1 on success
+ *          returns 0 on failure
+ */
+int check_hostname_ip(char* host, char* ip, pthread_mutex_t* lock){
+    FILE* fp;
+    char buf[300];
+    char* ip_2;
+    char* hostname;
+    int c;
+    pthread_mutex_lock(lock);
+    fp = fopen("hostname_ip.txt", "r");
+    if(fp){
+        while(fgets(buf, 300, fp)){
+            hostname = strtok(buf, ":");
+            if((strcmp(host, hostname)) == 0){
+                ip_2 = buf + strlen(hostname)+1;
+                memcpy(ip, ip_2, strlen(ip_2)-1);
+                fclose(fp);
+                pthread_mutex_unlock(lock);
+                return 1;
+            }
+            bzero(buf, 300);
+        }
+    }else{
+        perror("fopen - check_hostname_ip");
+    }
+    fclose(fp);
+    pthread_mutex_unlock(lock);
+    return 0;
+}
+
+
+
+
+//======================================
+// Page caching
+//======================================
 void send_cache(int clientfd, char* url){
     char path[45];
     bzero(path, 45);
@@ -90,7 +147,6 @@ void send_cache(int clientfd, char* url){
         fseek(fp, 0, SEEK_SET);
         quotient = f_size / MAXBUF;
     	remainder = f_size % MAXBUF;
-        //printf("Quotient - %d // Remainder - %d\n", quotient, remainder);
     	for(int i = 0; i < quotient; i++){
     		c = fread(buf, MAXBUF, 1, fp);
     		write(clientfd, buf, c);
@@ -117,12 +173,13 @@ int cache_hit(char* url, int timeout){
     if((now - filestat.st_mtime) > timeout){
         return 0;
     }
-    //printf("Time now: %ld -- Time Modified: %ld\n", now, filestat.st_mtime);
     return 1;
     
 }
 
-
+/*
+ * check_cache - checks page cache to see if file exists
+ */
 int check_cache(char* url){
     char path[45];
     bzero(path, 45);
@@ -133,15 +190,9 @@ int check_cache(char* url){
     return 0; // cache miss
 }
 
-void pexit(int clientfd){
-    close(clientfd);
-    fflush(stdout);
-    pthread_exit(NULL);
-}
-
-
-
-
+/*
+ * open_file - opens cache file with the name as the md5sum 
+ */
 FILE* open_file(char* url){
     FILE* fp;
     char hash[35];
@@ -157,14 +208,73 @@ FILE* open_file(char* url){
     sprintf(buf2, "%s", hash);
 
     strcat(buf, buf2);
-    //printf("%s  -  %s   :  %lu\n", buf, url_2, strlen(url_2));
     if((fp = fopen(buf, "wb")) == NULL){
         printf("ERROR fopen: %s\n", buf);
         perror("fopen");
-        exit(-1);
+        //exit(-1);
+        return NULL;
     }
     free(url_2);
     return fp;
+}
+
+//======================================
+// Blacklist authentication
+//======================================
+int check_blacklist_for_ip(struct server_conn *serv, char* ip){
+    FILE* fp;
+    char buf[300];
+    char* ip_addr;
+    int c;
+    if(serv->from_cache){
+        ip_addr = ip;
+        
+    }else{
+        struct sockaddr_in addr;
+        memcpy(&addr.sin_addr, serv->server->h_addr, serv->server->h_length);
+        ip_addr = inet_ntoa(addr.sin_addr);
+    }
+    ip_addr[strlen(ip_addr)] = '\0';
+    fp = fopen("blacklist.txt", "r");
+    if(fp){
+        while(fgets(buf, 300, fp)){
+            if(buf[strlen(buf)-1] == '\n'){ //cut off newlines
+                buf[strlen(buf)-1] = '\0';
+            }
+            if((strcmp(ip_addr, buf)) == 0){
+                fclose(fp);
+                return -1;
+            }
+            bzero(buf, 300);
+        }
+    }else{
+        perror("fopen - check_blacklist_for_ip");
+    }
+    fclose(fp);
+    return 0;
+}
+
+int check_blacklist_for_hostname(char* hostname){
+    FILE* fp;
+    char buf[500];
+    int c;
+    fp = fopen("blacklist.txt", "r");
+    if(fp){
+        while(fgets(buf, 500, fp)){
+            if(buf[strlen(buf)-1] == '\n'){ //cut off newlines
+                buf[strlen(buf)-1] = '\0';
+            }
+            if((strcmp(hostname, buf)) == 0){
+                fclose(fp);
+                return -1;
+            }
+            bzero(buf, 500);
+        }
+    }else{
+        perror("fopen - check_blacklist_for_hostname");
+    }
+    fclose(fp);
+    return 0;
 }
 
 
@@ -180,8 +290,15 @@ int get_contentlength(char* buf){
         content = strstr(buf, "content-length");
     }
 
+    if(content == NULL){
+        if(strstr(buf, "chunked")){
+            content = strstr(buf, "\r\n\r\n") + 4;
+            content = strtok(content, "\r\n");
+            return strtol(content, NULL, 16);
+        }
+        
+    }
     temp = strchr(content, ':')+2;
-    
     if (temp != NULL){
         return atoi(temp);
     }
@@ -213,15 +330,17 @@ char* read_in(char* buf, int servfd, int clientfd, int* total_len, char* serv_re
 
     while(cur_len < total_length){
         if((n = read(servfd, buf, d_left)) < 0){
-            exit(-1);
+            return NULL;
         }
         if(new){
             char* buf_2 = (char* )malloc(strlen(buf)+1);
             memcpy(buf_2, buf, strlen(buf)+1);
-            header_length = get_headerlength(buf_2);
-            content_length = get_contentlength(buf_2);
-            total_length = header_length + content_length+2;
 
+            header_length = get_headerlength(buf_2);
+
+            content_length = get_contentlength(buf_2);
+
+            total_length = header_length + content_length+2;
             new = 0;
             free(buf_2);
             
@@ -240,11 +359,19 @@ char* read_in(char* buf, int servfd, int clientfd, int* total_len, char* serv_re
 
     *total_len = total_length;
     serv_response = zapp;
-    
-    //serv_response[total_length-1] = '\0';
 
     return serv_response;
 }
+
+
+
+//======================================
+// Link Prefetch
+//======================================
+void link_prefetch(char* serv_response){
+    ;
+}
+
 
 
 //======================================
@@ -282,6 +409,8 @@ void serror(int clientfd, int type){
         strcpy(buf, "HTTP/1.1 400 Bad Request\r\n\r\n");
     }else if(type == -3){
         strcpy(buf, "HTTP/1.1 500 Internal Proxy Error\r\n\r\n");
+    }else if(type == -4){
+        strcpy(buf, "HTTP/1.1 403 Forbidden\r\n\r\n");
     }
     
     printf("client FD: %d\n",clientfd);
@@ -340,7 +469,7 @@ int open_proxyfd(int proxy_port){
 /*
  * open_servfd - opens connection to requested http serv
  */
-int open_servfd(struct server_conn *serv){
+int open_servfd(struct server_conn *serv, char* ip){
     int servfd;
     struct sockaddr_in serv_addr;
         
@@ -350,8 +479,14 @@ int open_servfd(struct server_conn *serv){
         return -1;
     }
     
-    /*copy addr from hostent to sockaddr_in and populate sockaddr_in struct*/
-    memcpy(&serv_addr.sin_addr, serv->server->h_addr, serv->server->h_length);
+    if(serv->from_cache){
+        /*copy addr from serv struct*/
+        serv_addr.sin_addr.s_addr = inet_addr(ip);
+    }else{
+        /*copy addr from hostent to sockaddr_in and populate sockaddr_in struct*/
+        memcpy(&serv_addr.sin_addr, serv->server->h_addr, serv->server->h_length);
+    }
+
     //printf("IP (%d): %s\n", servfd, inet_ntoa(serv_addr.sin_addr));
     serv_addr.sin_family = AF_INET;
     if((strlen(serv->port) == 0)){

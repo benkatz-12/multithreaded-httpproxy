@@ -1,12 +1,12 @@
 #include "webproxy.h"
 
 int main(int argc, char** argv){
+    FILE* hostname_ip_cache;
     int proxy_port, proxyfd, *clientfdp, timeout;
     socklen_t clientlen=sizeof(struct sockaddr_in);
     struct sockaddr_in clientaddr;
-    
     pthread_t tid;
-    
+    pthread_mutex_t lock;
 
     if(argc != 3){
         fprintf(stderr, "Correct Usage: ./webproxy <port number> <cache timeout>\n");
@@ -15,6 +15,18 @@ int main(int argc, char** argv){
 
     proxy_port = atoi(argv[1]);
     
+    //create hostname-ip cache if not already there
+    hostname_ip_cache = fopen("hostname_ip.txt", "w+");
+    if(hostname_ip_cache == NULL){
+        perror("fopen - hostname-ip");
+    }
+    fclose(hostname_ip_cache);
+
+    //init mutex lock
+    if(pthread_mutex_init(&lock, NULL) != 0){
+        perror("Mutex");
+        exit(-1);
+    }
     
     if((proxyfd = open_proxyfd(proxy_port)) < 0){
         exit(1);
@@ -23,6 +35,7 @@ int main(int argc, char** argv){
     while(1){
         struct args *t_args = (struct args*)malloc(sizeof(struct args));
         t_args->timeout = atoi(argv[2]);
+        t_args->lock = &lock;
         clientfdp = malloc(sizeof(int)); /* malloc client socket descriptor to be able to free later // clientaddr struct is not used, so overwrite is OK*/
         if((*clientfdp = accept(proxyfd, (struct sockaddr *)&clientaddr, &clientlen)) < 0){
             perror("Accept");
@@ -31,7 +44,7 @@ int main(int argc, char** argv){
         t_args->clientfdp = clientfdp;
         pthread_create(&tid, NULL, thread, (void *)t_args);
     }
-
+    fclose(hostname_ip_cache);
     close(proxyfd);
 }
 
@@ -57,7 +70,6 @@ int parse(int clientfd, struct server_conn *serv){
     char* version;
     char* rl_path;
     char* cmp_method = (char*)malloc(5);
-    //printf("Clientfd ENTER: %d\n", clientfd);
     while((n = read(clientfd, buf, MAXBUF)) != 0){
         if(n < 0){
             perror("Read");
@@ -68,9 +80,7 @@ int parse(int clientfd, struct server_conn *serv){
             e=-2;return e;
         }
 
-        //printf("Server received the following request: %d bytes -  from %d : \n%s\n",n,clientfd, buf);
         //body of parsing
-        
         request_line = strtok(buf, delim);
         body = buf + strlen(request_line)+2;
         method = strtok(request_line, " ");
@@ -86,14 +96,10 @@ int parse(int clientfd, struct server_conn *serv){
         char* temp;
         //prepending '/' to any path
         req_path = strstr(path_2, host) + strlen(host);
-        //printf("Req: %s  : %d\n", req_path, strlen(req_path));
 
-        
         if(strlen(req_path) == 0){
             req_path = "/";
         }
-        
-        
 
         //populate serv struct
         if(strlen(path_2) < 1000){
@@ -132,9 +138,8 @@ int parse(int clientfd, struct server_conn *serv){
                 strncpy(serv->body, body, strlen(body));
             }else{e=-1;return e;}
         }
-        break; //FIND SOME OTHER CONDITION TO BREAK ON
+        break;
     }
-    //printf("Clientfd EXIT: %d  -  %s\n", clientfd, serv->path);
     free(cmp_method);
     return e;
 }
@@ -152,8 +157,7 @@ void proxy_service(struct server_conn *serv, int clientfd){
     snprintf(request_line, sizeof(request_line)+1, "GET %s %s\r\n", serv->path, serv->version);
 
     memcpy(buf, request_line, sizeof(request_line));
-    if(strlen(serv->body) == 0){  /////////////POSSIBLY NEED TO ADD A CONNECTION CLOSE IF IT DOESNT HAVE ONE
-        //strcat(buf, "Connection: close\r\n");
+    if(strlen(serv->body) == 0){ 
         strcat(buf, "\r\n");
     }else{
         strcat(buf, serv->body);
@@ -162,10 +166,23 @@ void proxy_service(struct server_conn *serv, int clientfd){
     write(serv->servfd, buf, strlen(buf));
     bzero(buf, MAXBUF);
     serv_response = read_in(buf, serv->servfd, clientfd, &total_len, serv_response);
+    if(serv_response == NULL){
+        serror(clientfd, -3);
+    }
+
+    if(strstr(serv_response, "Content-Type: text/html")){ //if its an html doc, then link prefetch
+        link_prefetch(serv_response);
+    }
+
+
     fp = open_file(serv->url);
-    //fprintf(fp, "%s", serv_response);
-    fwrite(serv_response, sizeof(char), total_len, fp);
-    fclose(fp);
+    if(fp){
+        fwrite(serv_response, sizeof(char), total_len, fp);
+        fclose(fp);
+    }else{
+        printf("FILE NOT CACHED\n");
+    }
+    
  
     free(serv_response);
 }
@@ -173,10 +190,11 @@ void proxy_service(struct server_conn *serv, int clientfd){
 
 /* Thread routine */
 void * thread(void* vargp){
-    int n, c_stat;
+    int n, c_stat, b_stat;
     struct server_conn serv;
     int clientfd = *(((struct args*)vargp)->clientfdp);
     int timeout = ((struct args*)vargp)->timeout;
+    pthread_mutex_t* lock = ((struct args*)vargp)->lock;
     pthread_detach(pthread_self()); /* Detach current thread so there is no pthread_join to wait on */
     free(vargp); /* Free arg struct to all accepting new clients */
     
@@ -186,9 +204,26 @@ void * thread(void* vargp){
         serror(clientfd, n);
     }
 
-    //authenticate request
-    if((n=hostname_auth(&serv)) < 0){
-        serror(clientfd, -2);
+    //check if hostname is in blacklist
+    if(check_blacklist_for_hostname(serv.host) == -1){
+        serror(clientfd, -4);
+    }
+
+    //check if hostname is in hostname-ip cache
+    char ip[15];
+    if(check_hostname_ip(serv.host, ip, lock)){
+        serv.from_cache = 1;
+    }else{
+        //authenticate hostname with DNS + blacklist
+        serv.from_cache = 0;
+        if((n=hostname_auth(&serv, lock)) < 0){
+            serror(clientfd, -2);
+        }
+    }
+
+    //check if ip address is in blacklist
+    if(check_blacklist_for_ip(&serv, ip) == -1){
+        serror(clientfd, -4);
     }
 
     //check if file in cache
@@ -204,10 +239,10 @@ void * thread(void* vargp){
 
 
     //open connection to requested http server
-    if((serv.servfd=open_servfd(&serv)) < 0){
+    if((serv.servfd=open_servfd(&serv, ip)) < 0){
         serror(clientfd, -3);
     }
-    
+
     proxy_service(&serv, clientfd);
     pexit(clientfd);
     
